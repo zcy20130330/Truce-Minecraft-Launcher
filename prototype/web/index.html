@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PCL-Prototype · MC 启动器原型</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="app">
+
+  <!-- 顶栏 -->
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo">⛏</span>
+      <span class="title">PCL-Prototype</span>
+      <span class="subtitle">启动器原型 v0.1</span>
+    </div>
+    <div class="top-right">
+      <span id="state-badge" class="badge idle">空闲</span>
+      <button id="btn-settings" class="btn ghost" title="设置">⚙ 设置</button>
+    </div>
+  </header>
+
+  <div class="main">
+
+    <!-- 左：版本列表 -->
+    <aside class="sidebar">
+      <div class="sidebar-head">
+        <span>版本列表</span>
+        <span id="ver-count" class="count"></span>
+        <button id="btn-refresh" class="btn mini" title="刷新">↻</button>
+      </div>
+      <div id="version-list" class="version-list">
+        <div class="empty">正在扫描版本…</div>
+      </div>
+    </aside>
+
+    <!-- 中：启动区 -->
+    <section class="center">
+      <div id="selected-info" class="selected-info">
+        <div class="empty">← 选择一个版本</div>
+      </div>
+      <div class="launch-zone">
+        <button id="btn-launch" class="btn launch" disabled>启动游戏</button>
+        <button id="btn-stop" class="btn danger" disabled>停止游戏</button>
+      </div>
+      <div class="quick-opts">
+        <label>内存 <input id="ram-range" type="range" min="1" max="16" step="0.5" value="4"></label>
+        <span id="ram-label" class="ram-label">4.0 GB</span>
+      </div>
+    </section>
+
+    <!-- 右：日志 -->
+    <section class="log-panel">
+      <div class="log-head">
+        <span>启动日志</span>
+        <button id="btn-clear-log" class="btn mini">清空</button>
+      </div>
+      <pre id="log-view" class="log-view">等待启动…</pre>
+    </section>
+
+  </div>
+
+  <!-- 设置弹层 -->
+  <div id="settings-overlay" class="overlay hidden">
+    <div class="settings">
+      <div class="settings-head">
+        <span>设置</span>
+        <button id="btn-close-settings" class="btn ghost">✕</button>
+      </div>
+      <div class="settings-body">
+
+        <div class="group">
+          <div class="group-title">游戏</div>
+          <div class="row">
+            <label>MC 文件夹</label>
+            <div class="row-flex">
+              <input id="cfg-mcfolder" type="text" spellcheck="false">
+              <button id="btn-scan-folder" class="btn mini" title="扫描常见路径">扫描</button>
+            </div>
+          </div>
+          <div class="row">
+            <label>离线用户名</label>
+            <input id="cfg-username" type="text" spellcheck="false">
+          </div>
+          <div class="row">
+            <label>分配内存</label>
+            <input id="cfg-ram" type="number" min="1" max="16" step="0.5" style="width:90px">
+            <span class="hint">GB</span>
+            <label class="inline"><input id="cfg-automem" type="checkbox">自动</label>
+          </div>
+          <div class="row">
+            <label></label>
+            <span id="mem-hint" class="hint"></span>
+          </div>
+          <div class="row">
+            <label>游戏语言</label>
+            <select id="cfg-language">
+              <option value="system">跟随系统</option>
+              <option value="zh_cn">简体中文</option>
+              <option value="zh_tw">繁體中文（台灣）</option>
+              <option value="en_us">English</option>
+              <option value="ja_jp">日本語</option>
+              <option value="ko_kr">한국어</option>
+              <option value="none">不修改（保持游戏内设置）</option>
+            </select>
+            <span class="hint">启动时写入 options.txt</span>
+          </div>
+          <div class="row">
+            <label>内存优化</label>
+            <label class="inline"><input id="cfg-memopt" type="checkbox">不足时自动优化</label>
+            <button id="btn-memopt" class="btn mini">立即优化</button>
+          </div>
+          <div class="row">
+            <label></label>
+            <span id="memopt-hint" class="hint"></span>
+          </div>
+          <div class="row">
+            <label>版本隔离</label>
+            <input id="cfg-isolate" type="checkbox">
+            <span class="hint">独立存档/Mod 文件夹（同 PCL）</span>
+          </div>
+        </div>
+
+        <div class="group">
+          <div class="group-title">Java</div>
+          <div class="row">
+            <label>选择方式</label>
+            <select id="cfg-java-mode">
+              <option value="auto">自动选择（按版本需求）</option>
+              <option value="manual">手动指定 java.exe</option>
+            </select>
+          </div>
+          <div class="row hidden" id="row-java-path">
+            <label>java.exe 路径</label>
+            <input id="cfg-javapath" type="text" spellcheck="false" placeholder="C:\...\bin\java.exe">
+          </div>
+          <div class="row">
+            <label>检测到的 Java</label>
+            <div id="java-list" class="java-list"><span class="hint">未检测</span></div>
+          </div>
+        </div>
+
+        <div class="group">
+          <div class="group-title">窗口</div>
+          <div class="row">
+            <label>宽度</label>
+            <input id="cfg-width" type="number" min="320" max="7680" style="width:90px">
+            <span class="hint">px</span>
+          </div>
+          <div class="row">
+            <label>高度</label>
+            <input id="cfg-height" type="number" min="240" max="4320" style="width:90px">
+            <span class="hint">px</span>
+          </div>
+          <div class="row">
+            <label>全屏</label>
+            <input id="cfg-fullscreen" type="checkbox">
+          </div>
+        </div>
+
+        <div class="group">
+          <div class="group-title">启动参数</div>
+          <div class="row">
+            <label>自定义 JVM</label>
+            <input id="cfg-jvmargs" type="text" spellcheck="false" placeholder="-XX:+UseG1GC ...">
+          </div>
+          <div class="row">
+            <label>自定义游戏</label>
+            <input id="cfg-gameargs" type="text" spellcheck="false" placeholder="--demo ...">
+          </div>
+          <div class="row">
+            <label>自动进服</label>
+            <input id="cfg-server" type="text" spellcheck="false" placeholder="server.com:25565">
+          </div>
+        </div>
+
+        <div class="group">
+          <div class="group-title">下载</div>
+          <div class="row">
+            <label>下载源</label>
+            <select id="cfg-dlsource">
+              <option value="0">镜像优先（BMCLAPI，国内快）</option>
+              <option value="1">官方优先（Mojang）</option>
+            </select>
+          </div>
+          <div class="row">
+            <label>启动前补全文件</label>
+            <input id="cfg-checkfiles" type="checkbox">
+          </div>
+        </div>
+
+      </div>
+      <div class="settings-foot">
+        <button id="btn-save-settings" class="btn primary">保存设置</button>
+      </div>
+    </div>
+  </div>
+
+</div>
+<script src="app.js"></script>
+</body>
+</html>

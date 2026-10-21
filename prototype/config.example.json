@@ -1,0 +1,19 @@
+{
+  "mc_folder": "%APPDATA%\\.minecraft",
+  "java_path": "",
+  "ram_gb": 4.0,
+  "auto_memory": true,
+  "memory_optimize": true,
+  "memory_reserve_mb": 1024,
+  "language": "system",
+  "username": "Player",
+  "window_width": 854,
+  "window_height": 480,
+  "fullscreen": false,
+  "version_isolate": false,
+  "jvm_args": "",
+  "game_args": "",
+  "server": "",
+  "download_source": 0,
+  "check_files": true
+}

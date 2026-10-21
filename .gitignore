@@ -1,0 +1,39 @@
+# ---------- 第三方参考源码（他人开源项目，不二次分发） ----------
+# PCL-CE / SJMCL / modrinth-code 的完整副本，仅本地学习用
+workbuddy1/启动器源码分析/
+
+# ---------- 本地运行时配置（含本机路径，勿提交） ----------
+# 正式配置见 config.example.json
+prototype/config.json
+
+# ---------- Python ----------
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# ---------- Node / Vite ----------
+node_modules/
+dist/
+dist-ssr/
+.vite/
+*.tsbuildinfo
+
+# ---------- Tauri / Rust（后端核心落地后生效） ----------
+workbuddy1/launcher/src-tauri/target/
+workbuddy1/launcher/src-tauri/gen/
+
+# ---------- 编辑器 / IDE ----------
+.vscode/
+.idea/
+*.swp
+
+# ---------- 操作系统 ----------
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ---------- 日志与运行时临时文件 ----------
+*.log
+.server.pid
