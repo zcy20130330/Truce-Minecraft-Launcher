@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"syscall"
 
 	"truce-launcher/internal/auth"
 	"truce-launcher/internal/config"
@@ -23,6 +24,9 @@ func main() {
 		gui.Run()
 		return
 	}
+	// windowsgui 子系统的程序默认没有控制台，命令行模式先补一个，
+	// 否则 scan/build/launch 的输出会丢失。
+	ensureConsole()
 	cmd := os.Args[1]
 	switch cmd {
 	case "scan":
@@ -34,6 +38,28 @@ func main() {
 	default:
 		fmt.Printf("未知命令：%s\n", cmd)
 		os.Exit(1)
+	}
+}
+
+// ensureConsole 让以命令行子命令方式运行的 windowsgui 程序也能正常输出。
+// 优先附加到父进程控制台（cmd / PowerShell），失败则新建一个控制台，
+// 随后重建 os.Stdout / Stderr / Stdin 句柄。
+func ensureConsole() {
+	kernel32 := syscall.NewLazyDLL("kernel32.dll")
+	attach := kernel32.NewProc("AttachConsole")
+	r, _, _ := attach.Call(^uintptr(0)) // ATTACH_PARENT_PROCESS = -1
+	if r == 0 {
+		alloc := kernel32.NewProc("AllocConsole")
+		alloc.Call()
+	}
+	if h, e := syscall.GetStdHandle(syscall.STD_OUTPUT_HANDLE); e == nil && h != 0 {
+		os.Stdout = os.NewFile(uintptr(h), "stdout")
+	}
+	if h, e := syscall.GetStdHandle(syscall.STD_ERROR_HANDLE); e == nil && h != 0 {
+		os.Stderr = os.NewFile(uintptr(h), "stderr")
+	}
+	if h, e := syscall.GetStdHandle(syscall.STD_INPUT_HANDLE); e == nil && h != 0 {
+		os.Stdin = os.NewFile(uintptr(h), "stdin")
 	}
 }
 
