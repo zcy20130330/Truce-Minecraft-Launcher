@@ -360,14 +360,14 @@ func Launch(mcFolder, versionName string, cfg *config.Config, logFn func(string)
 		}
 	}
 	if javaPath == "" {
-		list := java.DetectJava()
-		chosen := java.SelectJava(list, v.JavaRequirement())
-		if chosen == nil {
-			log("[错误] 未检测到 Java，请安装或手动指定 java.exe 路径")
-			return false, "未找到合适的 Java"
+		rec := java.Recommend(java.DetectJava(java.DefaultJavaDir()), v.JavaRequirement())
+		if rec.Best == nil {
+			msg := fmt.Sprintf("%s（可在启动器「Java 运行环境」卡片点「自动安装 Java %d」）", rec.Reason, rec.InstallMajor)
+			log("[错误] " + msg)
+			return false, msg
 		}
-		javaPath = chosen["path"].(string)
-		log(fmt.Sprintf("自动选择 Java：%s（版本 %v）", javaPath, chosen["version"]))
+		javaPath = java.PathOf(rec.Best)
+		log(fmt.Sprintf("自动选择 Java：%s（版本 %v）· %s", javaPath, rec.Best["version"], rec.Reason))
 	}
 	if _, err := os.Stat(javaPath); err != nil {
 		msg := fmt.Sprintf("Java 不存在：%s", javaPath)
