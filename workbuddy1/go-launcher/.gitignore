@@ -1,16 +1,28 @@
-# 构建产物（Go 原生二进制，体积大且平台相关，不入库）
+# ===== 构建产物 =====
 truce-launcher
-truce-launcher.exe
 *.exe
+/dist/
+wpf/**/bin/
+wpf/**/obj/
+
+# Go 核心构建产物（由 build.bat 生成，勿入库）
+wpf/TruceLauncher.App/Resources/core.exe
 
 # 本地运行时配置（含本机路径，勿提交）
 config.json
 
-# 调试 / 临时脚本
-compare_py.py
-
-# 测试日志
+# ===== 调试 / 临时产物 =====
 *.log
+*.png
+*.bmp
+_env.txt
+compare_py.py
+_capscreen.py
+_geom.py
+shot_req.txt
+boot_diag*.txt
+selfshot.png*
+ui_shot.*
 
 # Go 缓存
 go.sum.old

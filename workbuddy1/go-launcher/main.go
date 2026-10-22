@@ -14,6 +14,7 @@ import (
 	"truce-launcher/internal/gui"
 	"truce-launcher/internal/java"
 	"truce-launcher/internal/launch"
+	"truce-launcher/internal/ramopt"
 	"truce-launcher/internal/system"
 	"truce-launcher/internal/versions"
 )
@@ -29,12 +30,18 @@ func main() {
 	ensureConsole()
 	cmd := os.Args[1]
 	switch cmd {
+	case "probe":
+		runProbe(os.Args[2:])
 	case "scan":
 		runScan(os.Args[2:])
 	case "build":
 		runBuild(os.Args[2:])
 	case "launch":
 		runLaunch(os.Args[2:])
+	case "optimize":
+		runOptimize(os.Args[2:])
+	case "javacheck":
+		runJavaCheck(os.Args[2:])
 	default:
 		fmt.Printf("未知命令：%s\n", cmd)
 		os.Exit(1)
@@ -44,8 +51,19 @@ func main() {
 // ensureConsole 让以命令行子命令方式运行的 windowsgui 程序也能正常输出。
 // 优先附加到父进程控制台（cmd / PowerShell），失败则新建一个控制台，
 // 随后重建 os.Stdout / Stderr / Stdin 句柄。
+//
+// 注意：当本程序被 GUI 前端以“重定向标准输出”的方式调用时，stdout 已经是
+// 一个管道。此时绝不能 AttachConsole/AllocConsole——那会弹出一个黑框，并把
+// os.Stdout 指向新控制台，导致前端读不到任何输出。所以先检测句柄类型。
 func ensureConsole() {
 	kernel32 := syscall.NewLazyDLL("kernel32.dll")
+	if h, err := syscall.GetStdHandle(syscall.STD_OUTPUT_HANDLE); err == nil &&
+		h != 0 && h != syscall.InvalidHandle {
+		// GetFileType: 1=磁盘 2=字符设备 3=管道
+		if r, _, _ := kernel32.NewProc("GetFileType").Call(uintptr(h)); r == 3 {
+			return
+		}
+	}
 	attach := kernel32.NewProc("AttachConsole")
 	r, _, _ := attach.Call(^uintptr(0)) // ATTACH_PARENT_PROCESS = -1
 	if r == 0 {
@@ -65,6 +83,61 @@ func ensureConsole() {
 
 func loadCfg(configPath string) *config.Config {
 	return config.Load(configPath)
+}
+
+func dirExists(p string) bool {
+	info, err := os.Stat(p)
+	return err == nil && info.IsDir()
+}
+
+// runProbe 一次性返回桌面界面初始化所需的全部信息（单行 JSON）：
+// 配置、已安装 Java、物理内存、系统语言、版本列表。
+// UI 启动时只需一次进程调用即可完成首屏渲染。
+func runProbe(args []string) {
+	fs := flag.NewFlagSet("probe", flag.ContinueOnError)
+	configPath := fs.String("config", "config.json", "配置文件路径")
+	mcFolder := fs.String("mc", "", ".minecraft 目录")
+	_ = fs.Parse(args)
+
+	cfg := loadCfg(*configPath)
+	if *mcFolder == "" {
+		*mcFolder = cfg.McFolder
+	}
+
+	javaList := java.DetectJava()
+	// 已配置的 Java 优先；否则按 1.17+ 需求挑一个作默认展示。
+	var selected map[string]interface{}
+	if cfg.JavaPath != "" {
+		if info, ok := java.GetJavaVersion(cfg.JavaPath); ok {
+			selected = info
+		}
+	}
+	if selected == nil {
+		selected = java.SelectJava(javaList, 17)
+	}
+
+	total := system.TotalMemoryMB()
+	out := map[string]interface{}{
+		"config_path":      *configPath,
+		"config":            cfg,
+		"mc_folder":         *mcFolder,
+		"mc_folder_exists":  dirExists(*mcFolder),
+		"java":              javaList,
+		"selected_java":     selected,
+		"system_language":   system.SystemLanguage(),
+		"versions":          versions.ScanVersions(*mcFolder),
+		"memory": map[string]int{
+			"total_mb":     total,
+			"available_mb": system.AvailableMemoryMB(),
+			"suggest_mb":   system.SuggestMemoryMB(total),
+		},
+	}
+	b, err := json.Marshal(out)
+	if err != nil {
+		fmt.Println(`{"error":"probe 序列化失败"}`)
+		return
+	}
+	fmt.Println(string(b))
 }
 
 func runScan(args []string) {
@@ -173,4 +246,51 @@ func runLaunch(args []string) {
 
 	ok, msg := launch.Launch(*mcFolder, *versionName, cfg, logFn, *maxSeconds)
 	fmt.Printf("\n=== 结果: ok=%v msg=%s ===\n", ok, msg)
+}
+
+// runOptimize 执行一次内存优化。过程日志实时打印到 stdout（供 UI 流式显示），
+// 最后追加一行 "###RESULT###{json}" 供前端解析结果摘要。
+func runOptimize(args []string) {
+	fs := flag.NewFlagSet("optimize", flag.ContinueOnError)
+	configPath := fs.String("config", "config.json", "配置文件路径")
+	perProcess := fs.Bool("per-process", false, "额外逐进程修剪工作集")
+	_ = fs.Parse(args)
+	_ = *configPath // 预留：后续可读配置决定是否逐进程修剪
+
+	var logs []string
+	res := ramopt.Optimize(func(s string) {
+		logs = append(logs, s)
+		fmt.Println(s)
+	}, *perProcess)
+
+	summary, _ := json.Marshal(map[string]interface{}{
+		"ok":        res.OK,
+		"admin":     res.Admin,
+		"before_mb": res.BeforeMB,
+		"after_mb":  res.AfterMB,
+		"freed_mb":  res.FreedMB,
+		"steps":     len(res.Steps),
+	})
+	fmt.Println("###RESULT###" + string(summary))
+}
+
+// runJavaCheck 校验单个 java.exe 并返回其版本（供 UI 手动指定 Java 时使用）。
+func runJavaCheck(args []string) {
+	fs := flag.NewFlagSet("javacheck", flag.ContinueOnError)
+	path := fs.String("path", "", "java.exe 路径（必填）")
+	_ = fs.Parse(args)
+
+	if *path == "" {
+		fmt.Println(`{"ok":false,"error":"缺少 --path"}`)
+		return
+	}
+	info, ok := java.GetJavaVersion(*path)
+	if !ok {
+		b, _ := json.Marshal(map[string]interface{}{"ok": false, "path": *path})
+		fmt.Println(string(b))
+		return
+	}
+	info["ok"] = true
+	b, _ := json.Marshal(info)
+	fmt.Println(string(b))
 }

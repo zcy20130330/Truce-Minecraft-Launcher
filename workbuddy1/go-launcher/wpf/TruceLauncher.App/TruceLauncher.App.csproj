@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <ImplicitUsings>enable</ImplicitUsings>
+
+    <AssemblyName>TruceLauncher</AssemblyName>
+    <RootNamespace>TruceLauncher</RootNamespace>
+    <ApplicationIcon>Resources\app.ico</ApplicationIcon>
+
+    <Product>Truce Minecraft Launcher</Product>
+    <Company>Truce</Company>
+    <Description>Truce Minecraft Launcher - 简洁优雅的 Minecraft 启动器</Description>
+    <Version>1.1.0</Version>
+    <FileVersion>1.1.0.0</FileVersion>
+    <AssemblyVersion>1.1.0.0</AssemblyVersion>
+
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <DebugType>embedded</DebugType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Go 核心（启动/扫描/Java 检测/内存优化）作为嵌入资源，运行时释放调用 -->
+    <EmbeddedResource Include="Resources\core.exe" LogicalName="core.exe" />
+  </ItemGroup>
+
+</Project>
