@@ -10,6 +10,7 @@ import (
 
 	"truce-launcher/internal/auth"
 	"truce-launcher/internal/config"
+	"truce-launcher/internal/gui"
 	"truce-launcher/internal/java"
 	"truce-launcher/internal/launch"
 	"truce-launcher/internal/system"
@@ -17,9 +18,10 @@ import (
 )
 
 func main() {
+	// 无子命令时启动原生桌面界面；带 scan/build/launch 时走命令行（验证用）。
 	if len(os.Args) < 2 {
-		fmt.Println("用法: truce-launcher <scan|build|launch> [选项]")
-		os.Exit(1)
+		gui.Run()
+		return
 	}
 	cmd := os.Args[1]
 	switch cmd {
