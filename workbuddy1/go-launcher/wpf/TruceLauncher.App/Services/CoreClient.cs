@@ -204,6 +204,69 @@ public static class CoreClient
         return info != null && info.Major > 0 ? info : null;
     }
 
+    /// <summary>自动选择结论：某个版本该用哪个 Java、是否需要安装。</summary>
+    public static async Task<JavaFindResult?> FindJavaAsync(
+        string versionName, CancellationToken ct = default)
+    {
+        var (_, stdout, _) = await RunCaptureAsync(
+            $"javafind --config {Q(ConfigPath)} --version {Q(versionName)}", 90_000, ct);
+        var text = (stdout ?? "").Trim();
+        int brace = text.IndexOf('{');
+        if (brace > 0) text = text[brace..];
+        if (string.IsNullOrWhiteSpace(text)) return null;
+        try
+        {
+            return JsonSerializer.Deserialize<JavaFindResult>(text, ReadOpts);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    /// <summary>自动下载并安装指定主版本的 JRE，返回 java.exe 路径。</summary>
+    public static async Task<(bool Ok, string JavaPath, string Error)> InstallJavaAsync(
+        int major, Action<JavaInstallProgress> onProgress, Action<string> onLine, CancellationToken ct)
+    {
+        bool ok = false;
+        string javaPath = "", error = "";
+
+        await RunStreamingAsync($"javainstall --major {major}", line =>
+        {
+            const string pm = "###PROGRESS###";
+            const string rm = "###RESULT###";
+
+            if (line.StartsWith(pm, StringComparison.Ordinal))
+            {
+                try
+                {
+                    var p = JsonSerializer.Deserialize<JavaInstallProgress>(line[pm.Length..], ReadOpts);
+                    if (p != null) onProgress(p);
+                }
+                catch { /* 单条进度解析失败忽略 */ }
+                return;
+            }
+
+            if (line.StartsWith(rm, StringComparison.Ordinal))
+            {
+                try
+                {
+                    using var doc = JsonDocument.Parse(line[rm.Length..]);
+                    var root = doc.RootElement;
+                    ok = root.TryGetProperty("ok", out var okEl) && okEl.GetBoolean();
+                    if (root.TryGetProperty("java_path", out var pEl)) javaPath = pEl.GetString() ?? "";
+                    if (root.TryGetProperty("error", out var eEl)) error = eEl.GetString() ?? "";
+                }
+                catch { /* ignore */ }
+                return;
+            }
+
+            if (!string.IsNullOrWhiteSpace(line)) onLine(line);
+        }, ct);
+
+        return (ok, javaPath, error);
+    }
+
     public static void SaveConfig(LauncherConfig cfg)
     {
         Directory.CreateDirectory(DataDir);

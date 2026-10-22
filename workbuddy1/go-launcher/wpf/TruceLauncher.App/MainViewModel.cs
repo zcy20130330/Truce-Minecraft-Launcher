@@ -49,6 +49,7 @@ public sealed class MainViewModel : ObservableObject
         SaveCommand = new RelayCommand(SaveConfigAndToast);
         BrowseMcCommand = new RelayCommand(BrowseMcFolder);
         BrowseJavaCommand = new AsyncRelayCommand(BrowseJava);
+        AutoInstallJavaCommand = new AsyncRelayCommand(AutoInstallJavaAsync);
         OptimizeCommand = new AsyncRelayCommand(OptimizeAsync);
         OpenMcFolderCommand = new RelayCommand(() => CoreClient.OpenFolder(McFolder));
         ClearLogCommand = new RelayCommand(() => Logs.Clear());
@@ -61,6 +62,7 @@ public sealed class MainViewModel : ObservableObject
     public RelayCommand SaveCommand { get; }
     public RelayCommand BrowseMcCommand { get; }
     public AsyncRelayCommand BrowseJavaCommand { get; }
+    public AsyncRelayCommand AutoInstallJavaCommand { get; }
     public AsyncRelayCommand OptimizeCommand { get; }
     public RelayCommand OpenMcFolderCommand { get; }
     public RelayCommand ClearLogCommand { get; }
@@ -114,6 +116,7 @@ public sealed class MainViewModel : ObservableObject
             if (!Set(ref _selectedVersion, value)) return;
             OnPropertyChanged(nameof(HasSelection));
             OnPropertyChanged(nameof(SelectedVersionTitle));
+            UpdateJavaRecommendation();
             UpdateSelectionHint();
         }
     }
@@ -137,10 +140,79 @@ public sealed class MainViewModel : ObservableObject
     public JavaInfo? SelectedJava
     {
         get => _selectedJava;
-        set { if (Set(ref _selectedJava, value)) OnPropertyChanged(nameof(JavaHint)); }
+        set
+        {
+            if (!Set(ref _selectedJava, value)) return;
+            UpdateJavaRecommendation();
+        }
     }
 
-    public string JavaHint => SelectedJava?.Detail ?? "未检测到 Java，请手动指定 java.exe";
+    /// <summary>当前版本要求的 Java 主版本（0 = 版本文件未标注）。</summary>
+    private int _javaRequired;
+    /// <summary>本机最合适的那个 Java（与核心 SelectJava 规则一致）。</summary>
+    private JavaInfo? _javaBest;
+    /// <summary>缺失时应自动安装的主版本。</summary>
+    private int _installMajor = 21;
+
+    /// <summary>本机缺少满足要求的 Java 时，界面上显示「自动安装」按钮。</summary>
+    public bool NeedJavaInstall => _javaBest == null;
+
+    public string InstallJavaText => $"自动安装 Java {_installMajor}";
+
+    /// <summary>当前选中版本 + 当前 Java 选择状态的一句话说明。</summary>
+    public string JavaHint
+    {
+        get
+        {
+            var sel = SelectedJava;
+            if (sel == null) return "本机未检测到 Java";
+
+            if (sel.IsAuto)
+            {
+                if (_javaBest == null)
+                {
+                    return _javaRequired > 0
+                        ? $"该版本要求 Java {_javaRequired}，本机缺少可用版本"
+                        : "本机未检测到 Java，建议一键安装";
+                }
+                return _javaRequired > 0 && _javaBest.Major != _javaRequired
+                    ? $"该版本要求 Java {_javaRequired}，将自动使用 Java {_javaBest.Major}"
+                    : $"已自动匹配 Java {_javaBest.Major}   ·   {_javaBest.Path}";
+            }
+
+            if (_javaRequired > 0 && sel.Major < _javaRequired)
+                return $"Java {sel.Major} 低于该版本要求的 Java {_javaRequired}，启动可能失败";
+            return sel.Detail;
+        }
+    }
+
+    /// <summary>按当前选中版本重新计算 Java 推荐（规则与核心 java.Recommend 保持一致）：
+    /// 精确同版本优先 → 更高的版本里最低的 → 都没有则判定需要安装。</summary>
+    private void UpdateJavaRecommendation()
+    {
+        _javaRequired = SelectedVersion?.Java ?? 0;
+
+        var installed = JavaList.Where(j => !j.IsAuto).ToList();
+        JavaInfo? best;
+        if (_javaRequired > 0)
+        {
+            best = installed.FirstOrDefault(j => j.Major == _javaRequired)
+                   ?? installed.Where(j => j.Major > _javaRequired)
+                               .OrderBy(j => j.Major)
+                               .FirstOrDefault();
+        }
+        else
+        {
+            best = installed.OrderByDescending(j => j.Major).FirstOrDefault();
+        }
+
+        _javaBest = best;
+        _installMajor = _javaRequired > 0 ? _javaRequired : (best?.Major ?? 21);
+
+        OnPropertyChanged(nameof(JavaHint));
+        OnPropertyChanged(nameof(NeedJavaInstall));
+        OnPropertyChanged(nameof(InstallJavaText));
+    }
 
     private MemoryInfo? _memory;
     public MemoryInfo? Memory
@@ -276,12 +348,16 @@ public sealed class MainViewModel : ObservableObject
         OnPropertyChanged(nameof(VersionCount));
 
         JavaList.Clear();
+        JavaList.Add(JavaInfo.Auto); // 首项：自动选择（交给核心按版本需求匹配）
         foreach (var j in probe.Java) JavaList.Add(j);
+
+        // 配置里明确指定过就沿用具体路径，否则默认「自动选择」
         SelectedJava =
-            JavaList.FirstOrDefault(j => !string.IsNullOrEmpty(_cfg.JavaPath) &&
-                                         string.Equals(j.Path, _cfg.JavaPath, StringComparison.OrdinalIgnoreCase))
-            ?? JavaList.FirstOrDefault(j => j.Major == probe.SelectedJava?.Major)
-            ?? JavaList.FirstOrDefault();
+            JavaList.FirstOrDefault(j => !j.IsAuto
+                                         && !string.IsNullOrEmpty(_cfg.JavaPath)
+                                         && string.Equals(j.Path, _cfg.JavaPath, StringComparison.OrdinalIgnoreCase))
+            ?? JavaInfo.Auto;
+        UpdateJavaRecommendation();
 
         Memory = probe.Memory;
         McFolder = string.IsNullOrWhiteSpace(probe.McFolder) ? _cfg.McFolder : probe.McFolder;
@@ -351,7 +427,10 @@ public sealed class MainViewModel : ObservableObject
         IsLaunching = true;
         IsConsoleOpen = true;
         StatusText = $"正在启动 {SelectedVersion.Name}…";
-        StatusDetail = $"Java {(SelectedJava?.Major.ToString() ?? "自动")} · 内存 {(AutoMemory ? SuggestMb : RamMb)} MB";
+        var javaText = SelectedJava == null || SelectedJava.IsAuto
+            ? (_javaBest != null ? $"自动 → Java {_javaBest.Major}" : "自动")
+            : $"Java {SelectedJava.Major}";
+        StatusDetail = $"{javaText} · 内存 {(AutoMemory ? SuggestMb : RamMb)} MB";
         AddLog($"[启动器] 启动 {SelectedVersion.Name}，内存 {(AutoMemory ? SuggestMb : RamMb)} MB");
 
         _launchCts = new CancellationTokenSource();
@@ -464,6 +543,91 @@ public sealed class MainViewModel : ObservableObject
         }
     }
 
+    // ---------- Java 自动安装 ----------
+    private async Task AutoInstallJavaAsync()
+    {
+        if (_javaBest != null) return; // 已有满足要求的 Java，无需安装
+
+        var major = _installMajor;
+        IsBusy = true;
+        IsConsoleOpen = true;
+        StatusText = $"正在安装 Java {major}…";
+        StatusDetail = "准备获取 Temurin JRE";
+        AddLog($"[Java] 开始自动安装 Java {major}");
+
+        var lastPct = -1;
+        var lastTick = DateTime.MinValue;
+
+        try
+        {
+            var (ok, path, error) = await CoreClient.InstallJavaAsync(major,
+                p =>
+                {
+                    if (p.Stage == "download")
+                    {
+                        if (p.Percent < 0)
+                        {
+                            // 断流重试：进度不推进，只更新文字说明
+                            StatusText = $"正在重试下载 Java {major}…";
+                            StatusDetail = p.Message;
+                            return;
+                        }
+                        var now = DateTime.UtcNow;
+                        if (p.Percent == lastPct && (now - lastTick).TotalMilliseconds < 800) return;
+                        lastPct = p.Percent;
+                        lastTick = now;
+                        StatusText = $"正在下载 Java {major} · {p.Percent}%";
+                        StatusDetail = p.Message;
+                        return;
+                    }
+
+                    StatusText = p.Stage switch
+                    {
+                        "resolve" => $"正在解析 Java {major} 下载源…",
+                        "extract" => $"正在解压 Java {major}…",
+                        "verify" => $"正在校验 Java {major}…",
+                        "done" => $"Java {major} 安装完成",
+                        _ => StatusText
+                    };
+                    StatusDetail = p.Message;
+                },
+                line => Enqueue("[Java] " + line),
+                CancellationToken.None);
+
+            if (!ok)
+            {
+                StatusText = $"Java {major} 安装失败";
+                StatusDetail = string.IsNullOrWhiteSpace(error) ? "未知错误" : error;
+                AddLog($"[错误] Java {major} 安装失败：{error}", true);
+                return;
+            }
+
+            var info = await CoreClient.CheckJavaAsync(path);
+            if (info != null && info.Major > 0)
+            {
+                var exist = JavaList.FirstOrDefault(j => !j.IsAuto
+                    && string.Equals(j.Path, info.Path, StringComparison.OrdinalIgnoreCase));
+                if (exist == null) JavaList.Add(info);
+            }
+
+            UpdateJavaRecommendation();
+            StatusText = $"Java {major} 安装完成";
+            StatusDetail = path;
+            AddLog($"[Java] 已安装：{path}");
+        }
+        catch (Exception ex)
+        {
+            StatusText = "Java 安装失败";
+            StatusDetail = ex.Message;
+            AddLog("[错误] " + ex.Message, true);
+        }
+        finally
+        {
+            IsBusy = false;
+            UpdateJavaRecommendation();
+        }
+    }
+
     // ---------- 保存 ----------
     private void SaveConfigAndToast()
     {
@@ -476,7 +640,8 @@ public sealed class MainViewModel : ObservableObject
     public void SaveConfig()
     {
         _cfg.McFolder = McFolder;
-        _cfg.JavaPath = SelectedJava?.Path ?? "";
+        // 「自动选择」写空路径，核心会按版本需求自行匹配
+        _cfg.JavaPath = SelectedJava == null || SelectedJava.IsAuto ? "" : SelectedJava.Path;
         _cfg.RamGB = Math.Round(RamGb, 1);
         _cfg.AutoMemory = AutoMemory;
         _cfg.MemoryOptimize = MemoryOptimize;

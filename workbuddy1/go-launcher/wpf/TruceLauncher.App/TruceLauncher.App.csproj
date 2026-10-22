@@ -15,9 +15,9 @@
     <Product>Truce Minecraft Launcher</Product>
     <Company>Truce</Company>
     <Description>Truce Minecraft Launcher - 简洁优雅的 Minecraft 启动器</Description>
-    <Version>1.1.0</Version>
-    <FileVersion>1.1.0.0</FileVersion>
-    <AssemblyVersion>1.1.0.0</AssemblyVersion>
+    <Version>1.2.0</Version>
+    <FileVersion>1.2.0.0</FileVersion>
+    <AssemblyVersion>1.2.0.0</AssemblyVersion>
 
     <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
     <EnableWindowsTargeting>true</EnableWindowsTargeting>

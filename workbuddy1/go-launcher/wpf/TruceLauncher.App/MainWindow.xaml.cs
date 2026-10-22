@@ -91,7 +91,13 @@ public partial class MainWindow : Window
     {
         Dispatcher.BeginInvoke(new Action(async () =>
         {
-            await Task.Delay(5000);
+            // 等首屏数据加载完（最多 90 秒），否则会拍到“正在扫描已安装版本…”的中间态
+            for (int i = 0; i < 900; i++)
+            {
+                if (DataContext is not MainViewModel vm || !vm.IsBusy) break;
+                await Task.Delay(100);
+            }
+            await Task.Delay(700);
             try { Capture(path); }
             catch (Exception ex)
             {

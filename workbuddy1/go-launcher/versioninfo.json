@@ -2,13 +2,13 @@
   "FixedFileInfo": {
     "FileVersion": {
       "Major": 1,
-      "Minor": 0,
+      "Minor": 2,
       "Patch": 0,
       "Build": 0
     },
     "ProductVersion": {
       "Major": 1,
-      "Minor": 0,
+      "Minor": 2,
       "Patch": 0,
       "Build": 0
     },
@@ -19,17 +19,17 @@
     "FileSubType": "00"
   },
   "StringFileInfo": {
-    "Comments": "纯 Go 原生 Win32 实现的 Minecraft 启动器，零 CGO、无 WebView。",
+    "Comments": "Minecraft 启动器 Go 核心（版本扫描/解析/启动/Java 检测与自动安装/内存优化），由 WPF 界面调用。",
     "CompanyName": "Truce",
-    "FileDescription": "Truce Minecraft Launcher",
-    "FileVersion": "1.0.0.0",
-    "InternalName": "TruceLauncher",
+    "FileDescription": "Truce Launcher Core",
+    "FileVersion": "1.2.0.0",
+    "InternalName": "core",
     "LegalCopyright": "Copyright © 2026 Truce",
     "LegalTrademarks": "",
-    "OriginalFilename": "TruceLauncher.exe",
+    "OriginalFilename": "core.exe",
     "PrivateBuild": "",
     "ProductName": "Truce Minecraft Launcher",
-    "ProductVersion": "1.0.0.0",
+    "ProductVersion": "1.2.0.0",
     "SpecialBuild": ""
   },
   "VarFileInfo": {

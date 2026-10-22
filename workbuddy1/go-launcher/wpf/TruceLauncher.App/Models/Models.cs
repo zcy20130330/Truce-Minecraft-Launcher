@@ -78,19 +78,28 @@ public sealed class JavaInfo
     [JsonPropertyName("version")] public int[] Version { get; set; } = Array.Empty<int>();
     [JsonPropertyName("major")] public int Major { get; set; }
 
-    [JsonIgnore] public string ShortLabel => $"Java {Major}";
+    /// <summary>「自动选择」占位项：Path 为空、无主版本号，交给核心按版本需求匹配。</summary>
+    [JsonIgnore] public bool IsAuto => Major <= 0 && string.IsNullOrWhiteSpace(Path);
+
+    public const string AutoText = "自动选择（按版本匹配）";
+
+    /// <summary>下拉框首项。</summary>
+    public static JavaInfo Auto { get; } = new();
+
+    [JsonIgnore] public string ShortLabel => IsAuto ? "自动选择" : $"Java {Major}";
 
     /// <summary>下拉框 / 选中项的单行展示文本。</summary>
     [JsonIgnore]
-    public string Display => Major > 0
-        ? $"Java {Major}    ·    {Path}"
-        : Path;
+    public string Display => IsAuto
+        ? AutoText
+        : Major > 0 ? $"Java {Major}    ·    {Path}" : Path;
 
     [JsonIgnore]
     public string Detail
     {
         get
         {
+            if (IsAuto) return AutoText;
             var ver = Version.Length > 0 ? string.Join(".", Version) : Major.ToString();
             return $"Java {ver}   ·   {Path}";
         }
@@ -111,6 +120,8 @@ public sealed class ProbeResult
     [JsonPropertyName("mc_folder")] public string McFolder { get; set; } = "";
     [JsonPropertyName("mc_folder_exists")] public bool McFolderExists { get; set; }
     [JsonPropertyName("java")] public List<JavaInfo> Java { get; set; } = new();
+    [JsonPropertyName("java_dir")] public string JavaDir { get; set; } = "";
+    [JsonPropertyName("java_required")] public int JavaRequired { get; set; }
     [JsonPropertyName("selected_java")] public JavaInfo? SelectedJava { get; set; }
     [JsonPropertyName("system_language")] public string SystemLanguage { get; set; } = "zh_cn";
     [JsonPropertyName("versions")] public List<VersionItem> Versions { get; set; } = new();
@@ -125,4 +136,25 @@ public sealed class OptimizeResult
     [JsonPropertyName("before_mb")] public int BeforeMb { get; set; }
     [JsonPropertyName("after_mb")] public int AfterMb { get; set; }
     [JsonPropertyName("freed_mb")] public int FreedMb { get; set; }
+}
+
+/// <summary>Java 自动安装的进度（解析 core.exe javainstall 的 ###PROGRESS### 行）。</summary>
+public sealed class JavaInstallProgress
+{
+    [JsonPropertyName("stage")] public string Stage { get; set; } = "";
+    [JsonPropertyName("percent")] public int Percent { get; set; }
+    [JsonPropertyName("message")] public string Message { get; set; } = "";
+}
+
+/// <summary>javafind 的返回：某版本要求的 Java 与本机匹配结论。</summary>
+public sealed class JavaFindResult
+{
+    [JsonPropertyName("version")] public string Version { get; set; } = "";
+    [JsonPropertyName("java_dir")] public string JavaDir { get; set; } = "";
+    [JsonPropertyName("available")] public List<JavaInfo> Available { get; set; } = new();
+    [JsonPropertyName("required")] public int Required { get; set; }
+    [JsonPropertyName("best")] public JavaInfo? Best { get; set; }
+    [JsonPropertyName("need_install")] public bool NeedInstall { get; set; }
+    [JsonPropertyName("install_major")] public int InstallMajor { get; set; }
+    [JsonPropertyName("reason")] public string Reason { get; set; } = "";
 }

@@ -42,6 +42,10 @@ func main() {
 		runOptimize(os.Args[2:])
 	case "javacheck":
 		runJavaCheck(os.Args[2:])
+	case "javafind":
+		runJavaFind(os.Args[2:])
+	case "javainstall":
+		runJavaInstall(os.Args[2:])
 	default:
 		fmt.Printf("未知命令：%s\n", cmd)
 		os.Exit(1)
@@ -58,11 +62,11 @@ func main() {
 func ensureConsole() {
 	kernel32 := syscall.NewLazyDLL("kernel32.dll")
 	if h, err := syscall.GetStdHandle(syscall.STD_OUTPUT_HANDLE); err == nil &&
-		h != 0 && h != syscall.InvalidHandle {
-		// GetFileType: 1=磁盘 2=字符设备 3=管道
-		if r, _, _ := kernel32.NewProc("GetFileType").Call(uintptr(h)); r == 3 {
-			return
-		}
+		h != 0 && h != syscall.InvalidHandle && h != ^syscall.Handle(0) {
+		// stdout 已经接好了（控制台 / 文件重定向 / 管道），不要再动句柄：
+		// 一旦 AttachConsole 或 AllocConsole 成功，标准句柄会被换成控制台句柄，
+		// 原本重定向到文件的输出会全部跑到不可见的控制台里（静默丢日志）。
+		return
 	}
 	attach := kernel32.NewProc("AttachConsole")
 	r, _, _ := attach.Call(^uintptr(0)) // ATTACH_PARENT_PROCESS = -1
@@ -104,16 +108,26 @@ func runProbe(args []string) {
 		*mcFolder = cfg.McFolder
 	}
 
-	javaList := java.DetectJava()
-	// 已配置的 Java 优先；否则按 1.17+ 需求挑一个作默认展示。
+	javaDir := java.DefaultJavaDir()
+	javaList := java.DetectJava(javaDir)
+
+	// 选中逻辑：配置里指定的优先；否则按首个已装版本的需求自动匹配。
 	var selected map[string]interface{}
 	if cfg.JavaPath != "" {
 		if info, ok := java.GetJavaVersion(cfg.JavaPath); ok {
 			selected = info
 		}
 	}
+	firstRequired := 0
+	allVersions := versions.ScanVersions(*mcFolder)
+	for _, v := range allVersions {
+		if n, _ := v["java"].(int); n > 0 {
+			firstRequired = n
+			break
+		}
+	}
 	if selected == nil {
-		selected = java.SelectJava(javaList, 17)
+		selected = java.Recommend(javaList, firstRequired).Best
 	}
 
 	total := system.TotalMemoryMB()
@@ -123,9 +137,11 @@ func runProbe(args []string) {
 		"mc_folder":         *mcFolder,
 		"mc_folder_exists":  dirExists(*mcFolder),
 		"java":              javaList,
+		"java_dir":          javaDir,
+		"java_required":     firstRequired,
 		"selected_java":     selected,
 		"system_language":   system.SystemLanguage(),
-		"versions":          versions.ScanVersions(*mcFolder),
+		"versions":          allVersions,
 		"memory": map[string]int{
 			"total_mb":     total,
 			"available_mb": system.AvailableMemoryMB(),
@@ -182,7 +198,7 @@ func runBuild(args []string) {
 	// Java 选择
 	javaPath := cfg.JavaPath
 	if javaPath == "" {
-		if chosen := java.SelectJava(java.DetectJava(), v.JavaRequirement()); chosen != nil {
+		if chosen := java.SelectJava(java.DetectJava(java.DefaultJavaDir()), v.JavaRequirement()); chosen != nil {
 			javaPath = chosen["path"].(string)
 		}
 	}
@@ -293,4 +309,78 @@ func runJavaCheck(args []string) {
 	info["ok"] = true
 	b, _ := json.Marshal(info)
 	fmt.Println(string(b))
+}
+
+// runJavaFind 针对某个已安装版本给出 Java 选择结论：
+// 该版本要求哪个 Java、本机哪个最合适、是否建议自动安装。
+func runJavaFind(args []string) {
+	fs := flag.NewFlagSet("javafind", flag.ContinueOnError)
+	configPath := fs.String("config", "config.json", "配置文件路径")
+	mcFolder := fs.String("mc", "", ".minecraft 目录")
+	versionName := fs.String("version", "", "版本名")
+	_ = fs.Parse(args)
+
+	cfg := loadCfg(*configPath)
+	if *mcFolder == "" {
+		*mcFolder = cfg.McFolder
+	}
+
+	required := 0
+	if *versionName != "" {
+		v := versions.GetVersion(*mcFolder, *versionName)
+		if v != nil && v.Error == "" {
+			required = v.JavaRequirement()
+		}
+	}
+
+	javaDir := java.DefaultJavaDir()
+	list := java.DetectJava(javaDir)
+	rec := java.Recommend(list, required)
+
+	b, _ := json.Marshal(map[string]interface{}{
+		"version":       *versionName,
+		"java_dir":      javaDir,
+		"available":     list,
+		"required":      rec.Required,
+		"best":          rec.Best,
+		"need_install":  rec.NeedInstall,
+		"install_major": rec.InstallMajor,
+		"reason":        rec.Reason,
+	})
+	fmt.Println(string(b))
+}
+
+// runJavaInstall 自动下载并安装指定主版本的 JRE。
+// 进度与结果按行输出，供前端流式解析：
+//
+//	###PROGRESS###{"stage":"download","percent":42,"message":"..."}
+//	###RESULT###{"ok":true,"java_path":"...","major":21}
+func runJavaInstall(args []string) {
+	fs := flag.NewFlagSet("javainstall", flag.ContinueOnError)
+	major := fs.Int("major", 21, "要安装的 Java 主版本")
+	javaDir := fs.String("dir", "", "安装目录（默认 %LOCALAPPDATA%\\TruceLauncher\\java）")
+	_ = fs.Parse(args)
+
+	emit := func(line string) { fmt.Println(line) }
+	report := func(p java.InstallProgress) {
+		b, _ := json.Marshal(map[string]interface{}{
+			"stage":   p.Stage,
+			"percent": p.Percent,
+			"message": p.Message,
+		})
+		emit("###PROGRESS###" + string(b))
+	}
+
+	path, err := java.InstallJRE(*major, *javaDir, report)
+	if err != nil {
+		b, _ := json.Marshal(map[string]interface{}{
+			"ok": false, "major": *major, "error": err.Error(),
+		})
+		emit("###RESULT###" + string(b))
+		os.Exit(1)
+	}
+	b, _ := json.Marshal(map[string]interface{}{
+		"ok": true, "major": *major, "java_path": path,
+	})
+	emit("###RESULT###" + string(b))
 }

@@ -260,12 +260,27 @@
                                     </ComboBox.ItemTemplate>
                                 </ComboBox>
                                 <Grid Margin="0,10,0,0">
-                                    <TextBlock Text="{Binding JavaHint}" Style="{StaticResource TinyText}"
-                                               VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
-                                               Margin="0,0,110,0" />
-                                    <Button Content="手动选择…" Style="{StaticResource GhostButton}"
-                                            Height="30" Padding="11,0" HorizontalAlignment="Right"
-                                            Command="{Binding BrowseJavaCommand}" />
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="{Binding JavaHint}"
+                                               Style="{StaticResource TinyText}"
+                                               VerticalAlignment="Center"
+                                               TextTrimming="CharacterEllipsis"
+                                               ToolTip="{Binding JavaHint}"
+                                               Margin="0,0,10,0" />
+                                    <StackPanel Grid.Column="1" Orientation="Horizontal">
+                                        <Button Content="{Binding InstallJavaText}"
+                                                Style="{StaticResource PrimaryButton}"
+                                                Height="30" FontSize="12.5" Padding="13,0"
+                                                Margin="0,0,8,0"
+                                                Visibility="{Binding NeedJavaInstall, Converter={StaticResource BoolToVis}}"
+                                                Command="{Binding AutoInstallJavaCommand}" />
+                                        <Button Content="手动选择…" Style="{StaticResource GhostButton}"
+                                                Height="30" Padding="11,0"
+                                                Command="{Binding BrowseJavaCommand}" />
+                                    </StackPanel>
                                 </Grid>
                             </StackPanel>
                         </Border>

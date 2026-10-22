@@ -86,7 +86,8 @@ func dirExists(p string) bool {
 }
 
 // DetectJava 检测系统 Java，返回按版本号从高到低排序的列表。
-func DetectJava() []map[string]interface{} {
+// extraRoots 为额外要扫描的根目录（例如启动器自带的 java 安装目录）。
+func DetectJava(extraRoots ...string) []map[string]interface{} {
 	found := map[string]bool{}
 	var paths []string
 
@@ -118,6 +119,26 @@ func DetectJava() []map[string]interface{} {
 			return nil
 		})
 	}
+	// 注册表登记的 JDK/JRE（很多安装包不落在 Program Files 下）
+	for _, home := range registryJavaHomes() {
+		add(filepath.Join(home, "bin", "java.exe"))
+	}
+	// 启动器自己下载安装的 Java
+	for _, root := range extraRoots {
+		if root == "" || !dirExists(root) {
+			continue
+		}
+		add(filepath.Join(root, "bin", "java.exe"))
+		entries, err := os.ReadDir(root)
+		if err != nil {
+			continue
+		}
+		for _, e := range entries {
+			if e.IsDir() {
+				add(filepath.Join(root, e.Name(), "bin", "java.exe"))
+			}
+		}
+	}
 	if jh := os.Getenv("JAVA_HOME"); jh != "" {
 		add(filepath.Join(jh, "bin", "java.exe"))
 	}
@@ -147,10 +168,15 @@ func DetectJava() []map[string]interface{} {
 	return result
 }
 
-// SelectJava 按需求选择 Java：优先精确 major，其次 >= required 的最低版本，最后最高版本。
+// SelectJava 按需求选择 Java：优先精确 major，其次 >= required 的最低版本。
+// 没有任何满足要求的版本时返回 nil——绝不能拿低版本硬跑，
+// 那必然以 "UnsupportedClassVersionError" 启动失败。
 func SelectJava(javaList []map[string]interface{}, requiredMajor int) map[string]interface{} {
 	if len(javaList) == 0 {
 		return nil
+	}
+	if requiredMajor <= 0 {
+		return javaList[0]
 	}
 	for _, j := range javaList {
 		if major, _ := j["major"].(int); major == requiredMajor {
@@ -166,5 +192,5 @@ func SelectJava(javaList []map[string]interface{}, requiredMajor int) map[string
 	if len(eligible) > 0 {
 		return eligible[len(eligible)-1] // 已按版本降序，取最低合格
 	}
-	return javaList[0]
+	return nil
 }
