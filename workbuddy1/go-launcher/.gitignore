@@ -1,0 +1,16 @@
+# 构建产物（Go 原生二进制，体积大且平台相关，不入库）
+truce-launcher
+truce-launcher.exe
+*.exe
+
+# 本地运行时配置（含本机路径，勿提交）
+config.json
+
+# 调试 / 临时脚本
+compare_py.py
+
+# 测试日志
+*.log
+
+# Go 缓存
+go.sum.old
